@@ -141,63 +141,163 @@ void DES(CryptoPP::byte *block, size_t length, CryptoPP::CipherDir direction)
     delete t;
 }
 
-void RSA(string message)
+void DSM()
 {
-// Bob artificially small key pair
-    CryptoPP::AutoSeededRandomPool prng;
-    CryptoPP::RSA::PrivateKey privKey;
+    using namespace CryptoPP;
+    // Bob artificially small key pair
+    AutoSeededRandomPool prng;
+    RSA::PrivateKey privKey;
 
-    privKey.GenerateRandomWithKeySize(prng, 1024);
-    CryptoPP::RSA::PublicKey pubKey(privKey);
-
-    CryptoPP::SecByteBlock buff1, buff2, buff3;
+    privKey.GenerateRandomWithKeySize(prng, 64);
+    RSA::PublicKey pubKey(privKey);
 
     // Convenience
-    const CryptoPP::Integer& n = pubKey.GetModulus();
-    const CryptoPP::Integer& e = pubKey.GetPublicExponent();
-    //const CryptoPP::Integer& d = privKey.GetPrivateExponent();
+    const Integer& n = pubKey.GetModulus();
+    const Integer& e = pubKey.GetPublicExponent();
+    const Integer& d = privKey.GetPrivateExponent();
 
+    // Print params
+    cout << "Pub mod: " << std::hex << pubKey.GetModulus() << endl;
+    cout << "Pub exp: " << std::hex << e << endl;
+    cout << "Priv mod: " << std::hex << privKey.GetModulus() << endl;
+    cout << "Priv exp: " << std::hex << d << endl;
 
-    cout << "RSA public Key: (" << std::hex << e << ", " << std::hex << n << ")\n\n";
+    // For sizing the hashed message buffer. This should be SHA256 size.
+    const size_t SIG_SIZE = UnsignedMin(SHA256::BLOCKSIZE, n.ByteCount());
 
-    //cout << "RSA private Key: (" << std::hex << d << ", " << std::hex << n << ")\n\n";
+    // Scratch
+    SecByteBlock buff1, buff2, buff3;
 
     // Alice original message to be signed by Bob
-    CryptoPP::SecByteBlock orig((const CryptoPP::byte*) "Testowy t", 8);
-    CryptoPP::Integer m(orig.data(), orig.size());
-    cout << "Text to encrypt: " << message << endl;
+    SecByteBlock orig((const CryptoPP::byte*)"secret", 6);
+    Integer m(orig.data(), orig.size());
+    cout << "Message: " << std::hex << m << endl;
 
-    CryptoPP::Integer r;
+    // Hash message per Rabin (1979)
+    buff1.resize(SIG_SIZE);
+    CryptoPP::SHA256 hash1;
+    hash1.CalculateTruncatedDigest(buff1, buff1.size(), orig, orig.size());
+
+    // H(m) as Integer
+    Integer hm(buff1.data(), buff1.size());
+    cout << "H(m): " << std::hex << hm << endl;
+
+    // Alice blinding
+    Integer r;
     do {
-        r.Randomize(prng, CryptoPP::Integer::One(), n - CryptoPP::Integer::One());
+        r.Randomize(prng, Integer::One(), n - Integer::One());
     } while (!RelativelyPrime(r, n));
 
     // Blinding factor
-    CryptoPP::Integer b = a_exp_b_mod_c(r, e, n);
+    Integer b = a_exp_b_mod_c(r, e, n);
+    cout << "Random: " << std::hex << b << endl;
 
-    // blinding message
-    CryptoPP::Integer mm = a_times_b_mod_c(m, b, n);
-    cout << "Encrypted Text: " << std::hex << mm << endl;
+    // Alice blinded message
+    Integer mm = a_times_b_mod_c(hm, b, n);
+    cout << "Blind msg: " << std::hex << mm << endl;
 
-    // signing
-    CryptoPP::Integer ss = privKey.CalculateInverse(prng, mm);
+    // Bob sign
+    Integer ss = privKey.CalculateInverse(prng, mm);
+    cout << "Blind sign: " << ss << endl;
 
     // Alice checks s(s'(x)) = x. This is from Chaum's paper
-    CryptoPP::Integer c = pubKey.ApplyFunction(ss);
+    Integer c = pubKey.ApplyFunction(ss);
+    cout << "Check sign: " << c << endl;
     if (c != mm)
         throw runtime_error("Alice cross-check failed");
 
-    CryptoPP::Integer s = a_times_b_mod_c(ss, r.InverseMod(n), n);
+    // Alice remove blinding
+    Integer s = a_times_b_mod_c(ss, r.InverseMod(n), n);
+    cout << "Unblind sign: " << s << endl;
 
-    CryptoPP::Integer v = pubKey.ApplyFunction(s);
+    // Eve verifies
+    Integer v = pubKey.ApplyFunction(s);
+    cout << "Verify: " << std::hex << v << endl;
 
-    size_t len = v.MinEncodedSize();
-    string str;
+    // Convert to a string
+    size_t req = v.MinEncodedSize();
+    buff2.resize(req);
+    v.Encode(&buff2[0], buff2.size());
 
-    str.resize(len);
-    v.Encode((CryptoPP::byte *)str.data(), str.size(), CryptoPP::Integer::UNSIGNED);
+    // Hash message per Rabin (1979)
+    buff3.resize(SIG_SIZE);
+    CryptoPP::SHA256 hash2;
+    hash2.CalculateTruncatedDigest(buff3, buff3.size(), orig, orig.size());
 
-    cout << "Decrypted Text: " << str << endl;
+    // Constant time compare
+    bool equal = buff2.size() == buff3.size() && VerifyBufsEqual(
+            buff2.data(), buff3.data(), buff3.size());
+
+    if (!equal)
+        throw runtime_error("Eve verified failed");
+
+    cout << "Verified signature" << endl;
+
+}
+
+
+void RSA(string message)
+{
+    using namespace CryptoPP;
+
+    ///////////////////////////////////////
+// Pseudo Random Number Generator
+    AutoSeededRandomPool rng;
+
+///////////////////////////////////////
+// Generate Parameters
+    InvertibleRSAFunction params;
+    params.GenerateRandomWithKeySize(rng, 1024);
+
+///////////////////////////////////////
+// Generated Parameters
+    const Integer& n = params.GetModulus();
+    const Integer& p = params.GetPrime1();
+    const Integer& q = params.GetPrime2();
+    const Integer& d = params.GetPrivateExponent();
+    const Integer& e = params.GetPublicExponent();
+
+///////////////////////////////////////
+// Dump
+    cout << "RSA Parameters:" << endl;
+    cout << " n: " << n << endl;
+    cout << " p: " << p << endl;
+    cout << " q: " << q << endl;
+    cout << " d: " << d << endl;
+    cout << " e: " << e << endl;
+
+///////////////////////////////////////
+// Create Keys
+    RSA::PrivateKey privateKey(params);
+    RSA::PublicKey publicKey(params);
+
+    string cipher, recovered;
+
+////////////////////////////////////////////////
+// Encryption
+    RSAES_OAEP_SHA_Encryptor enc(publicKey);
+
+    StringSource ss1(message, true,
+                     new PK_EncryptorFilter(rng, enc,
+                                            new StringSink(cipher)
+                     ) // PK_EncryptorFilter
+    ); // StringSource
+
+    cout << "\nText to encrypt: " << message << endl;
+
+    cout << "\nEncrypted Text: " << cipher << endl;
+
+////////////////////////////////////////////////
+// Decryption
+    RSAES_OAEP_SHA_Decryptor dec(privateKey);
+
+    StringSource ss2(cipher, true,
+                     new PK_DecryptorFilter(rng, dec,
+                                            new StringSink(recovered)
+                     ) // PK_DecryptorFilter
+    ); // StringSource
+
+    cout << "\nDecrypted Text: " << recovered << endl;
 
 }
 
@@ -235,6 +335,12 @@ int main() {
     cout << "RSA Method\n\n";
 
     RSA("Testowy tekst");
+
+    cout << "\n---------------------\n";
+    cout << "Digital Signature Method\n\n";
+
+    DSM();
+
     return 0;
 }
 

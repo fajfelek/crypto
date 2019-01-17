@@ -1,4 +1,4 @@
-# Install script for directory: /Users/filip/CLionProjects/cryptopp
+# Install script for directory: /Users/filipstajniak/CLionProjects/cryptopp/crypto
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -40,5 +40,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "/Users/filip/CLionProjects/cryptopp/cmake-build-debug/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "/Users/filipstajniak/CLionProjects/cryptopp/crypto/cmake-build-debug/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")

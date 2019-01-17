@@ -6,5 +6,5 @@ CXX_FLAGS = -g   -std=gnu++1z
 
 CXX_DEFINES = 
 
-CXX_INCLUDES = -I/Users/filip/Library/Frameworks/crypto/include 
+CXX_INCLUDES = -I/Users/filipstajniak/Library/Frameworks/crypto/include 
 
